@@ -57,6 +57,11 @@
   <!-- What output conformity we want for our JS. We're fairly forward-looking by default. -->
   <property name="ssClosureOutputSpec" value="ECMASCRIPT_2019"/>
 
+  <!-- DEPRECATED UNPREFIXED PROPERTIES. IF SET, SHOULD ABORT THE BUILD.
+         REMOVE AFTER 1.2 RELEASE. -->
+  <property name="config" value="OBSOLETE"/>
+  <property name="configFile" value="OBSOLETE"/>
+
   <!--The configuration file path, relative to this build file. -->
   <property name="ssConfig" value="config.xml"/>
 
@@ -145,6 +150,28 @@
     <echo>Running staticSearch build based on config file: 
     ${ssConfigFile}</echo>
 
+    <!-- For version 1.2 only, we need to warn users if they're still using
+             the old config and configFile property names as parameters. -->
+    <if>
+      <or>
+        <not>
+          <equals arg1="${config}" arg2="OBSOLETE"/>
+        </not>
+        <not>
+          <equals arg1="${configFile}" arg2="OBSOLETE"/>
+        </not>
+      </or>
+      <then>
+        <echo message="*************************************************"/>
+        <echo message="DEPRECATION WARNING: It appears that you're still"/>
+        <echo message="using one of the deprecated 'config' or 'configFile' "/>
+        <echo message="parameters. Please switch to using 'ssConfig' and/or "/>
+        <echo message="'ssConfigFile' instead."/>
+        <echo message=""/>
+        <fail message="BUILD FAILED."/>
+      </then>
+    </if>
+
     <!-- If we're building the test data, we need to generate the VERSION file
          and also copy the .htm_ files to .html before starting. -->
     <if>
@@ -212,9 +239,9 @@
     <java classpath="${ssSaxon}" classname="net.sf.saxon.Transform" failonerror="true" fork="true">
       <arg value="-xsl:${ssBaseDir}/xsl/create_config_xsl.xsl"/>
       <arg value="-s:${ssBaseDir}/xsl/create_config_xsl.xsl"/>
-      <arg value="--suppressXsltNamespaceCheck:on"/>
       <arg value="configFile=${ssConfigFile}"/>
-      <arg value="ssVerbose=${ssVerbose}"/>
+      <arg value="--suppressXsltNamespaceCheck:on"/>
+      <arg value="verbose=${ssVerbose}"/>
       <arg value="ssPatternsetFile=${ssPatternsetFile}"/>
     </java>
   </target>
@@ -231,7 +258,7 @@
 
     <xslt
       style="${ssBaseDir}/xsl/tokenize.xsl" classpath="${ssSaxon}" destdir="${staticSearchTempDir}"
-       reloadstylesheet="true" 
+       reloadstylesheet="true"
        force="true"
       useimplicitfileset="false">
       <factory name="net.sf.saxon.TransformerFactoryImpl"/>
@@ -240,8 +267,7 @@
         <!--Exclude the temporary directory's basename-->
         <exclude name="**/${staticSearchTempFolder}/**"/>
       </fileset>
-
-       <regexpmapper from="^(.*)\.([^\.]+$)" to="\1_tokenized.html"/>
+      <regexpmapper from="^(.*)\.([^\.]+$)" to="\1_tokenized.html"/>
     </xslt>
     <!--Necessary to delete any empty files (i.e. files excluded by 
         the configuration) -->
@@ -325,25 +351,6 @@
     <copy file="${ssSearchFilePath}" tofile="${ssDebugSearchPage}"/>
     <replace file="${ssDebugSearchPage}" token="ssSearch.js" value="ssSearch-debug.js"/>
   </target>
-  
-  <target name="makeManualDebugSearchPage">
-    <description>
-      TARGET: makeManualDebugSearchPage
-      This copies the newly-produced search page to a new file
-      and then replaces the link to ssSearch.js with one to 
-      ssSearch-debug.js, for better testing, but also removes the
-      link to the test set, so that the search page has no activity
-      on load and can be used for manual testing and debugging.
-    </description>
-    <propertyregex property="ssManualDebugSearchPage" 
-      input="${ssSearchFilePath}"
-      regexp="(\.[a-zA-Z]+)$"
-      replace="-manual-debug\1"
-      global="false"/>
-    <echo message="Creating manual debug search page: ${ssManualDebugSearchPage}"/>
-    <copy file="${ssSearchFilePath}" tofile="${ssManualDebugSearchPage}"/>
-    <replaceregexp file="${ssManualDebugSearchPage}" match="&lt;/svg>.+&lt;/body>" replace="&lt;/svg>&lt;/a>&lt;/div>&lt;/div>&lt;/body>" flags="s"/>
-  </target>
 
   <target name="report">
     <description>
@@ -408,7 +415,6 @@
     <copy todir="${staticSearchDir}/">
       <fileset dir="${ssBaseDir}/js">
         <include name="ssSearch.js"/>
-        <include name="ssSearch.js.map"/>
         <include name="ssSearch-debug.js"/>
         <include name="ssHighlight.js"/>
         <include name="ssInitialize.js"/>
@@ -432,8 +438,6 @@
     <!--Added 2021-03-17: Remove the JS build files. -->
     <delete file="${ssBaseDir}/js/ssSearch.js"/>
     <delete file="${ssBaseDir}/js/ssSearch-debug.js"/>
-    <delete file="${ssBaseDir}/search-debug.html"/>
-    <delete file="${ssBaseDir}/ssSearch-manual-debug.html"/>
   </target>
 
   <target name="buildJS">
@@ -459,27 +463,13 @@
       </fileset>
     </concat>
     <!-- Note that we're currently suppressing warnings when compiling. -->
-    <!--<jscomp compilationLevel="${ssClosureCompilationLevel}" warning="${ssClosureWarning}" 
+    <jscomp compilationLevel="${ssClosureCompilationLevel}" warning="${ssClosureWarning}" 
       debug="false" languageOut="${ssClosureOutputSpec}"
       output="${ssBaseDir}/js/ssSearch.js">
       <sources dir="${ssBaseDir}/js">
         <file name="ssSearch-debug.js"/>
       </sources>
-    </jscomp>-->
-    <jscomp compilationLevel="${ssClosureCompilationLevel}" 
-      warning="${ssClosureWarning}" 
-      debug="false" languageOut="${ssClosureOutputSpec}" 
-      output="${ssBaseDir}/js/ssSearch.js"
-      sourceMapFormat="V3"
-      sourceMapLocationMapping="js/ssSearch-debug.js|ssSearch-debug.js"
-      sourceMapOutputFile="${ssBaseDir}/js/ssSearch.js.map"
-      >
-      <sources dir="${ssBaseDir}/js">
-        <file name="ssSearch-debug.js"/>
-      </sources>
     </jscomp>
-    <echo message="Adding source map comment to the end of the ssSearch.js file..."/>
-    <echo file="${ssBaseDir}/js/ssSearch.js" append="true">&#x0a;//# sourceMappingURL=ssSearch.js.map</echo>
   </target>
 
   <target name="all"
@@ -500,7 +490,7 @@
   </target>
 
   <target name="test"
-    depends="init, validate, config, tokenize, json, buildJS, copyFiles, makeSearchPage, makeDebugSearchPage, makeManualDebugSearchPage, report">
+    depends="init, validate, config, tokenize, json, buildJS, copyFiles, makeSearchPage, makeDebugSearchPage, report">
     <description>
       TARGET: test
       Target that runs the whole process, but does not clean up the
